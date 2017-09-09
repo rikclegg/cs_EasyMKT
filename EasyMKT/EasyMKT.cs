@@ -29,6 +29,8 @@ using LogLevels = com.bloomberg.mktdata.samples.Log.LogLevels;
 using Event = Bloomberglp.Blpapi.Event;
 using Message = Bloomberglp.Blpapi.Message;
 using Subscription = Bloomberglp.Blpapi.Subscription;
+using EventHandler = Bloomberglp.Blpapi.EventHandler;
+using static Bloomberglp.Blpapi.Event;
 
 namespace com.bloomberg.mktdata.samples
 {
@@ -94,7 +96,7 @@ namespace com.bloomberg.mktdata.samples
             sessionOptions.ServerHost = this.host;
             sessionOptions.ServerPort = this.port;
 
-            this.session = new Session(sessionOptions, new EventHandler(ProcessEvent));
+            this.session = new Session(sessionOptions, new EventHandler(processEvent));
 
             try
             {
@@ -130,200 +132,150 @@ namespace com.bloomberg.mktdata.samples
 
         }
 
-        public void ProcessEvent(Event event, Session session) {
-            try
-            {
-                switch (event.eventType().intValue())
-                    {                
-                    case Event.EventType.Constants.ADMIN:
-                        processAdminEvent(event, session);
-                        break;
-                    case Event.EventType.Constants.SESSION_STATUS:
-                        processSessionEvent(event, session);
-                        break;
-                    case Event.EventType.Constants.SERVICE_STATUS:
-                        processServiceEvent(event, session);
-                        break;
-                    case Event.EventType.Constants.SUBSCRIPTION_DATA:
-                        processSubscriptionDataEvent(event, session);
-                        break;
-                    case Event.EventType.Constants.SUBSCRIPTION_STATUS:
-                        processSubscriptionStatus(event, session);
-                        break;
-                    default:
-                        processMiscEvents(event, session);
-                        break;
+        public void processEvent(Event evt, Session session) {
+
+            switch (evt.Type) {
+                case EventType.ADMIN:
+                    processAdminEvent(evt, session);
+                    break;
+                case EventType.SESSION_STATUS:
+                    processSessionEvent(evt, session);
+                    break;
+                case EventType.SERVICE_STATUS:
+                    processServiceEvent(evt, session);
+                    break;
+                case EventType.SUBSCRIPTION_DATA:
+                    processSubscriptionDataEvent(evt, session);
+                    break;
+                case EventType.SUBSCRIPTION_STATUS:
+                    processSubscriptionStatus(evt, session);
+                    break;
+                default:
+                    processMiscEvents(evt, session);
+                    break;
+            }
         }
-    } catch (Exception e) {
-                    e.printStackTrace();
+
+
+        private void processAdminEvent(Event evt, Session session) {
+            foreach (Message msg in evt) {
+                if (msg.MessageType.Equals(SLOW_CONSUMER_WARNING)) {
+                    Log.LogMessage(LogLevels.BASIC, "Slow Consumer Warning");
+                }
+                else if (msg.MessageType.Equals(SLOW_CONSUMER_WARNING_CLEARED)) {
+                    Log.LogMessage(LogLevels.BASIC, "Slow Consumer Warning cleared");
                 }
             }
+        }
 
-		    private void processAdminEvent(Event event, Session session) throws Exception
-    {
-        Log.LogMessage(LogLevels.BASIC, "Processing " + event.eventType().toString());
+        private void processSessionEvent(Event evt, Session session) {
 
-        MessageIterator msgIter = event.messageIterator();
-            
-			    while (msgIter.hasNext()) {
-            Message msg = msgIter.next();
-            if (msg.messageType().equals(SLOW_CONSUMER_WARNING))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Warning: Entered Slow Consumer status");
-            }
-            else if (msg.messageType().equals(SLOW_CONSUMER_WARNING_CLEARED))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Slow consumer status cleared");
+            Log.LogMessage(LogLevels.BASIC, "Processing " + evt.Type.ToString());
+
+            foreach (Message msg in evt) {
+
+                if (msg.MessageType.Equals(SESSION_STARTED)) {
+                    Log.LogMessage(LogLevels.BASIC, "Session started...");
+                    session.OpenServiceAsync(MKTDATA_SERVICE);
+                }
+                else if (msg.MessageType.Equals(SESSION_STARTUP_FAILURE)) {
+                    Log.LogMessage(LogLevels.BASIC, "Error: Session startup failed");
+                }
+                else if (msg.MessageType.Equals(SESSION_TERMINATED)) {
+                    Log.LogMessage(LogLevels.BASIC, "Session has been terminated");
+                }
+                else if (msg.MessageType.Equals(SESSION_CONNECTION_UP)) {
+                    Log.LogMessage(LogLevels.BASIC, "Session connection is up");
+                }
+                else if (msg.MessageType.Equals(SESSION_CONNECTION_DOWN)) {
+                    Log.LogMessage(LogLevels.BASIC, "Session connection is down");
+                }
             }
         }
-    }
 
-    private void processSessionEvent(Event event, Session session) throws Exception
-    {
+        private void processServiceEvent(Event evt, Session session) {
 
-        Log.LogMessage(LogLevels.BASIC, "Processing " + event.eventType().toString());
+            Log.LogMessage(LogLevels.BASIC, "Processing " + evt.Type.ToString());
 
-        MessageIterator msgIter = event.messageIterator();
-            
-			    while (msgIter.hasNext()) {
+            foreach (Message msg in evt) {
 
-            Message msg = msgIter.next();
+                if (msg.MessageType.Equals(SERVICE_OPENED)) {
 
-            if (msg.messageType().equals(SESSION_STARTED))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Session started...");
-                session.openServiceAsync(MKTDATA_SERVICE);
-            }
-            else if (msg.messageType().equals(SESSION_STARTUP_FAILURE))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Error: Session startup failed");
-            }
-            else if (msg.messageType().equals(SESSION_TERMINATED))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Session has been terminated");
-            }
-            else if (msg.messageType().equals(SESSION_CONNECTION_UP))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Session connection is up");
-            }
-            else if (msg.messageType().equals(SESSION_CONNECTION_DOWN))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Session connection is down");
+                    Log.LogMessage(LogLevels.BASIC, "Service opened...");
+
+                    this.service = session.GetService(MKTDATA_SERVICE);
+
+                    Log.LogMessage(LogLevels.BASIC, "Got service...ready...");
+
+                    this.ready = true;
+                }
+                else if (msg.MessageType.Equals(SERVICE_OPEN_FAILURE)) {
+                    Log.LogMessage(LogLevels.BASIC, "Error: Service failed to open");
+                }
             }
         }
-    }
 
-    private void processServiceEvent(Event event, Session session)
-    {
+        private void processSubscriptionStatus(Event evt, Session session) {
 
-        Log.LogMessage(LogLevels.BASIC, "Processing " + event.eventType().toString());
+            Log.LogMessage(LogLevels.BASIC, "Processing " + evt.Type.ToString());
 
-        MessageIterator msgIter = event.messageIterator();
-
-        while (msgIter.hasNext())
-        {
-
-            Message msg = msgIter.next();
-
-            if (msg.messageType().equals(SERVICE_OPENED))
-            {
-
-                Log.LogMessage(LogLevels.BASIC, "Service opened...");
-
-                easyMKT.service = session.getService(MKTDATA_SERVICE);
-
-                Log.LogMessage(LogLevels.BASIC, "Got service...ready...");
-                this.easyMKT.ready = true;
-
-            }
-            else if (msg.messageType().equals(SERVICE_OPEN_FAILURE))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Error: Service failed to open");
+            foreach (Message msg in evt) {
+                if (msg.MessageType.Equals(SUBSCRIPTION_STARTED)) {
+                    Log.LogMessage(LogLevels.BASIC, "Subscription started successfully: " + msg.CorrelationID.ToString());
+                }
+                else if (msg.MessageType.Equals(SUBSCRIPTION_FAILURE)) {
+                    Log.LogMessage(LogLevels.BASIC, "Error: Subscription failed: " + msg.CorrelationID.ToString());
+                }
+                else if (msg.MessageType.Equals(SUBSCRIPTION_TERMINATED)) {
+                    Log.LogMessage(LogLevels.BASIC, "Subscription terminated : " + msg.CorrelationID.ToString());
+                }
             }
         }
-    }
 
-    private void processSubscriptionStatus(Event event, Session session) throws Exception
-    {
-        Log.LogMessage(LogLevels.BASIC, "Processing " + event.eventType().toString());
+        private void processSubscriptionDataEvent(Event evt, Session session) {
 
-        MessageIterator msgIter = event.messageIterator();
-            
-			    while (msgIter.hasNext()) {
-            Message msg = msgIter.next();
-            if (msg.messageType().equals(SUBSCRIPTION_STARTED))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Subscription started successfully: " + msg.correlationID().toString());
-            }
-            else if (msg.messageType().equals(SUBSCRIPTION_FAILURE))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Error: Subscription failed: " + msg.correlationID().toString());
-            }
-            else if (msg.messageType().equals(SUBSCRIPTION_TERMINATED))
-            {
-                Log.LogMessage(LogLevels.BASIC, "Subscription terminated : " + msg.correlationID().toString());
+            Log.LogMessage(LogLevels.DETAILED, "Processing " + evt.Type.ToString());
+
+            foreach (Message msg in evt) {
+                // process the incoming market data event
+                messageHandlers[msg.CorrelationID].handleMessage(msg);
             }
         }
-    }
 
-    private void processSubscriptionDataEvent(Event event, Session session) throws Exception
-    {
+        private void processMiscEvents(Event evt, Session session) {
 
-        Log.LogMessage(LogLevels.DETAILED, "Processing " + event.eventType().toString());
+            Log.LogMessage(LogLevels.BASIC, "Processing " + evt.Type.ToString());
 
-        MessageIterator msgIter = event.messageIterator();
-            
-        	    while (msgIter.hasNext()) {
-
-            Message msg = msgIter.next();
-            // process the incoming market data event
-            messageHandlers.get(msg.correlationID()).handleMessage(msg);
-        }
-    }
-
-    private void processMiscEvents(Event event, Session session) throws Exception
-    {
-        Log.LogMessage(LogLevels.BASIC, "Processing " + event.eventType().toString());
-
-        MessageIterator msgIter = event.messageIterator();
-            
-			    while (msgIter.hasNext()) {
-            Message msg = msgIter.next();
-            Log.LogMessage(LogLevels.BASIC, "MESSAGE: " + msg);
-        }
-    }
-
+            foreach (Message msg in evt) {
+                Log.LogMessage(LogLevels.BASIC, "MESSAGE: " + msg);
+            }
         }
 
 	    public void AddSubscription(Security security) {
 
-        Log.LogMessage(LogLevels.DETAILED, "Adding subscription for security: " + security.getName());
+            Log.LogMessage(LogLevels.DETAILED, "Adding subscription for security: " + security.GetName());
 
-        CorrelationID cID = new CorrelationID(security.getName());
+            CorrelationID cID = new CorrelationID(security.GetName());
 
-        Subscription newSubscription = new Subscription(security.getName(), fields.getFieldList(), "", cID);
+            Subscription newSubscription = new Subscription(security.GetName(), fields.GetFieldList(), "", cID);
 
-        Log.LogMessage(LogLevels.DETAILED, "Topic string: " + newSubscription.subscriptionString());
+            Log.LogMessage(LogLevels.DETAILED, "Topic string: " + newSubscription.SubscriptionString);
 
-        SubscriptionList newSubList = new SubscriptionList();
+            List<Subscription> newSubList = new List<Subscription>();
 
-        newSubList.add(newSubscription);
+            newSubList.Add(newSubscription);
 
-        messageHandlers.put(cID, security);
+            messageHandlers.Add(cID, security);
 
-        try
-        {
-            Log.LogMessage(LogLevels.DETAILED, "Subscribing...");
-            this.session.subscribe(newSubList);
-            Log.LogMessage(LogLevels.DETAILED, "Subscription request sent...");
-        }
-        catch (IOException e)
-        {
-            Log.LogMessage(LogLevels.BASIC, "Failed to subscribe: " + newSubList.toString());
-            e.printStackTrace();
-        }
-
-    }	
-
+            try {
+                Log.LogMessage(LogLevels.DETAILED, "Subscribing...");
+                this.session.Subscribe(newSubList);
+                Log.LogMessage(LogLevels.DETAILED, "Subscription request sent...");
+            }
+            catch (Exception ex) {
+                Log.LogMessage(LogLevels.BASIC, "Failed to subscribe: " + newSubList.ToString());
+                Console.WriteLine(ex.ToString());
+            }
+        }	
     }
 }

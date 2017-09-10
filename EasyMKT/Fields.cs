@@ -69,7 +69,7 @@ namespace com.bloomberg.mktdata.samples {
 
                 fd.SetName(fieldName);
 
-                if (f != null) fd.SetCurrentValue(f.GetValueAsString());
+                if (!f.IsNull) fd.SetCurrentValue(f.GetValueAsString());
                 else fd.SetCurrentValue("");
 
                 Log.LogMessage(LogLevels.DETAILED, "Setting field: " + fd.Name() + "\tvalue: " + fd.Value());

@@ -30,7 +30,7 @@ using Event = Bloomberglp.Blpapi.Event;
 using Message = Bloomberglp.Blpapi.Message;
 using Subscription = Bloomberglp.Blpapi.Subscription;
 using EventHandler = Bloomberglp.Blpapi.EventHandler;
-using static Bloomberglp.Blpapi.Event;
+using Request = Bloomberglp.Blpapi.Request;
 
 namespace com.bloomberg.mktdata.samples
 {
@@ -64,15 +64,19 @@ namespace com.bloomberg.mktdata.samples
         private int port;
 
         Session session;
-        Service service;
+        Service mktService;
+        Service refService;
 
-        Dictionary<CorrelationID, MessageHandler> messageHandlers = new Dictionary<CorrelationID, MessageHandler>();
+        Dictionary<CorrelationID, MessageHandler> subscriptionMessageHandlers = new Dictionary<CorrelationID, MessageHandler>();
+        Dictionary<CorrelationID, MessageHandler> requestMessageHandlers = new Dictionary<CorrelationID, MessageHandler>();
 
         private volatile bool ready = false;
+        private volatile bool svcOpened = false;
 
         private static readonly String MKTDATA_SERVICE = "//blp/mktdata";
-	
-	    public EasyMKT()
+        private static readonly String REFDATA_SERVICE = "//blp/refdata";
+
+        public EasyMKT()
         {
             this.host = "localhost";
             this.port = 8194;
@@ -135,19 +139,19 @@ namespace com.bloomberg.mktdata.samples
         public void processEvent(Event evt, Session session) {
 
             switch (evt.Type) {
-                case EventType.ADMIN:
+                case Event.EventType.ADMIN:
                     processAdminEvent(evt, session);
                     break;
-                case EventType.SESSION_STATUS:
+                case Event.EventType.SESSION_STATUS:
                     processSessionEvent(evt, session);
                     break;
-                case EventType.SERVICE_STATUS:
+                case Event.EventType.SERVICE_STATUS:
                     processServiceEvent(evt, session);
                     break;
-                case EventType.SUBSCRIPTION_DATA:
+                case Event.EventType.SUBSCRIPTION_DATA:
                     processSubscriptionDataEvent(evt, session);
                     break;
-                case EventType.SUBSCRIPTION_STATUS:
+                case Event.EventType.SUBSCRIPTION_STATUS:
                     processSubscriptionStatus(evt, session);
                     break;
                 default:
@@ -177,6 +181,7 @@ namespace com.bloomberg.mktdata.samples
                 if (msg.MessageType.Equals(SESSION_STARTED)) {
                     Log.LogMessage(LogLevels.BASIC, "Session started...");
                     session.OpenServiceAsync(MKTDATA_SERVICE);
+                    session.OpenServiceAsync(REFDATA_SERVICE);
                 }
                 else if (msg.MessageType.Equals(SESSION_STARTUP_FAILURE)) {
                     Log.LogMessage(LogLevels.BASIC, "Error: Session startup failed");
@@ -199,17 +204,29 @@ namespace com.bloomberg.mktdata.samples
 
             foreach (Message msg in evt) {
 
-                if (msg.MessageType.Equals(SERVICE_OPENED)) {
+                if (msg.MessageType.Equals(SERVICE_OPENED))
+                {
 
-                    Log.LogMessage(LogLevels.BASIC, "Service opened...");
-
-                    this.service = session.GetService(MKTDATA_SERVICE);
-
-                    Log.LogMessage(LogLevels.BASIC, "Got service...ready...");
-
-                    this.ready = true;
+                    String svc = msg.GetElementAsString("serviceName");
+                    if (svc == MKTDATA_SERVICE)
+                    {
+                        Log.LogMessage(LogLevels.BASIC, "Market Data Service opened...");
+                        this.mktService = session.GetService(MKTDATA_SERVICE);
+                        Log.LogMessage(LogLevels.BASIC, "Got Market Data service...ready...");
+                        if (svcOpened) this.ready = true;
+                        else svcOpened = true;
+                    }
+                    else if (svc == REFDATA_SERVICE)
+                    {
+                        Log.LogMessage(LogLevels.BASIC, "Reference Data Service opened...");
+                        this.refService = session.GetService(REFDATA_SERVICE);
+                        Log.LogMessage(LogLevels.BASIC, "Got Reference Data service...ready...");
+                        if (svcOpened) this.ready = true;
+                        else svcOpened = true;
+                    }
                 }
-                else if (msg.MessageType.Equals(SERVICE_OPEN_FAILURE)) {
+                else if (msg.MessageType.Equals(SERVICE_OPEN_FAILURE))
+                {
                     Log.LogMessage(LogLevels.BASIC, "Error: Service failed to open");
                 }
             }
@@ -238,7 +255,7 @@ namespace com.bloomberg.mktdata.samples
 
             foreach (Message msg in evt) {
                 // process the incoming market data event
-                messageHandlers[msg.CorrelationID].handleMessage(msg);
+                subscriptionMessageHandlers[msg.CorrelationID].handleMessage(msg);
             }
         }
 
@@ -265,7 +282,7 @@ namespace com.bloomberg.mktdata.samples
 
             newSubList.Add(newSubscription);
 
-            messageHandlers.Add(cID, security);
+            subscriptionMessageHandlers.Add(cID, security);
 
             try {
                 Log.LogMessage(LogLevels.DETAILED, "Subscribing...");
@@ -276,6 +293,46 @@ namespace com.bloomberg.mktdata.samples
                 Log.LogMessage(LogLevels.BASIC, "Failed to subscribe: " + newSubList.ToString());
                 Console.WriteLine(ex.ToString());
             }
-        }	
+        }
+
+        public CorrelationID sendRequest(Request request, MessageHandler handler)
+        {
+            CorrelationID newCID = new CorrelationID();
+            Log.LogMessage(LogLevels.BASIC, "EMSXAPI: Send external refdata request...adding MessageHandler [" + newCID + "]");
+            requestMessageHandlers.Add(newCID, handler);
+            try
+            {
+                session.SendRequest(request, newCID);
+                return newCID;
+            }
+            catch (Exception e)
+            {
+                System.Console.Error.WriteLine(e.StackTrace);
+                return null;
+            }
+        }
+
+        public Request createRequest(string requestType)
+        {
+            return this.refService.CreateRequest(requestType);
+        }
+
+        public CorrelationID sendRequest(Request request)
+        {
+            CorrelationID newCID = new CorrelationID();
+            Log.LogMessage(LogLevels.BASIC, "EMSXAPI: Send external refdata request...adding MessageHandler [" + newCID + "]");
+            requestMessageHandlers.Add(newCID, handler);
+            try
+            {
+                session.SendRequest(request, newCID);
+                return newCID;
+            }
+            catch (Exception e)
+            {
+                System.Console.Error.WriteLine(e.StackTrace);
+                return null;
+            }
+        }
+
     }
 }

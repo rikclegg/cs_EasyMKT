@@ -22,7 +22,7 @@ using Bloomberglp.Blpapi;
 
 namespace com.bloomberg.mktdata.samples {
 
-    interface MessageHandler {
+    public interface MessageHandler {
         void handleMessage(Message message);
     }
 }
